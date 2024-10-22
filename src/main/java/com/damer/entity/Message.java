@@ -2,6 +2,8 @@ package com.damer.entity;
 
 import com.amazonaws.services.dynamodbv2.datamodeling.*;
 
+import java.time.Instant;
+
 @DynamoDBTable(tableName = "message")
 public class Message {
 
@@ -15,7 +17,7 @@ public class Message {
     private String content;
 
     @DynamoDBAttribute(attributeName = "timestamp")
-    private String timestamp;
+    private long timestamp;
 
     @DynamoDBAttribute(attributeName = "isCorrected")
     private Boolean isCorrected;
@@ -44,11 +46,11 @@ public class Message {
         this.content = content;
     }
 
-    public String getTimestamp() {
+    public long getTimestamp() {
         return timestamp;
     }
 
-    public void setTimestamp(String timestamp) {
+    public void setTimestamp(long timestamp) {
         this.timestamp = timestamp;
     }
 
