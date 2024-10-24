@@ -14,26 +14,31 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
     <dependencies>
-    <dependency>
-        <groupId>com.amazonaws</groupId>
-        <artifactId>aws-lambda-java-core</artifactId>
-        <version>1.2.3</version>
-    </dependency>
-    <dependency>
-        <groupId>com.amazonaws</groupId>
-        <artifactId>aws-lambda-java-events</artifactId>
-        <version>3.11.0</version>
-    </dependency>
-    <dependency>
-        <groupId>com.amazonaws</groupId>
-        <artifactId>aws-java-sdk-dynamodb</artifactId>
-        <version>1.12.773</version>
-    </dependency>
-    <dependency>
-        <groupId>com.fasterxml.jackson.core</groupId>
-        <artifactId>jackson-databind</artifactId>
-        <version>2.18.0</version>
-    </dependency>
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-lambda-java-core</artifactId>
+            <version>1.2.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-lambda-java-events</artifactId>
+            <version>3.11.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-java-sdk-dynamodb</artifactId>
+            <version>1.12.773</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>dynamodb</artifactId>
+            <version>2.25.26</version> <!-- Replace with the latest version -->
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.18.0</version>
+        </dependency>
     </dependencies>
 
     <build>
