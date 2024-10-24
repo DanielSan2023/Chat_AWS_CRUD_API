@@ -2,13 +2,14 @@ package com.damer.entity;
 
 import com.amazonaws.services.dynamodbv2.datamodeling.*;
 
-import java.time.Instant;
-
 @DynamoDBTable(tableName = "message")
 public class Message {
 
     @DynamoDBHashKey(attributeName = "messId")
     private String messId;
+
+    @DynamoDBAttribute(attributeName = "roomId")
+    private String roomId;
 
     @DynamoDBAttribute(attributeName = "sender")
     private String sender;
@@ -36,6 +37,14 @@ public class Message {
 
     public void setSender(String sender) {
         this.sender = sender;
+    }
+
+    public String getRoomId() {
+        return roomId;
+    }
+
+    public void setRoomId(String roomId) {
+        this.roomId = roomId;
     }
 
     public String getContent() {
