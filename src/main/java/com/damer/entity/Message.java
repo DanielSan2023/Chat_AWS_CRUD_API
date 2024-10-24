@@ -8,8 +8,11 @@ public class Message {
     @DynamoDBHashKey(attributeName = "messId")
     private String messId;
 
-    @DynamoDBAttribute(attributeName = "roomId")
+
     private String roomId;
+
+
+    private long timestamp;
 
     @DynamoDBAttribute(attributeName = "sender")
     private String sender;
@@ -17,8 +20,6 @@ public class Message {
     @DynamoDBAttribute(attributeName = "content")
     private String content;
 
-    @DynamoDBAttribute(attributeName = "timestamp")
-    private long timestamp;
 
     @DynamoDBAttribute(attributeName = "isCorrected")
     private Boolean isCorrected;
@@ -39,6 +40,7 @@ public class Message {
         this.sender = sender;
     }
 
+    @DynamoDBIndexHashKey(globalSecondaryIndexName = "RoomIndex", attributeName = "roomId")
     public String getRoomId() {
         return roomId;
     }
@@ -55,6 +57,7 @@ public class Message {
         this.content = content;
     }
 
+    @DynamoDBIndexRangeKey(globalSecondaryIndexName = "RoomIndex", attributeName = "timestamp")
     public long getTimestamp() {
         return timestamp;
     }

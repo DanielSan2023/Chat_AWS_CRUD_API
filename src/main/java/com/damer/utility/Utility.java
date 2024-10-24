@@ -1,5 +1,6 @@
 package com.damer.utility;
 
+import com.amazonaws.services.dynamodbv2.model.AttributeValue;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.damer.entity.Message;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -46,5 +47,40 @@ public class Utility {
             context.getLogger().log("Error while converting obj to string:::" + e.getMessage());
         }
         return jsonBody;
+    }
+
+    public static String convertListOfAttributeMapsToJsonString(List<Map<String, AttributeValue>> messages, Context context) {
+        String jsonBody = null;
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            // Convert each map of AttributeValues to a more suitable format (String, Number, etc.)
+            for (Map<String, AttributeValue> message : messages) {
+                // Transform each item into a simpler map (String to Object)
+                Map<String, Object> simpleMessage = new HashMap<>();
+                for (Map.Entry<String, AttributeValue> entry : message.entrySet()) {
+                    simpleMessage.put(entry.getKey(), convertAttributeValueToSimpleValue(entry.getValue()));
+                }
+                // Convert to JSON string and append
+                jsonBody = objectMapper.writeValueAsString(simpleMessage);
+            }
+        } catch (JsonProcessingException e) {
+            context.getLogger().log("Error while converting list of attribute maps to JSON string:::" + e.getMessage());
+        }
+        return jsonBody;
+    }
+
+    private static Object convertAttributeValueToSimpleValue(AttributeValue attributeValue) {
+        if (attributeValue.getS() != null) {
+            return attributeValue.getS();  // String value
+        } else if (attributeValue.getN() != null) {
+            return Long.parseLong(attributeValue.getN());  // Numeric value
+        } else if (attributeValue.getBOOL() != null) {
+            return attributeValue.getBOOL();  // Boolean value
+        } else if (attributeValue.getL() != null) {
+            // Handle lists if required
+            return attributeValue.getL();
+        }
+        // Add more cases if your data uses other types like M (map), SS (String Set), etc.
+        return null;
     }
 }

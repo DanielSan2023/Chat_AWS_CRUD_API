@@ -19,7 +19,7 @@ public class LambdaHandler implements RequestHandler<APIGatewayProxyRequestEvent
 
             case "GET":
                 if (apiGatewayRequest.getPathParameters() != null) {
-                    return messageService.getMessageById(apiGatewayRequest, context);
+                    return messageService.getMessagesByRoomIdAndTimestamp(apiGatewayRequest, context);
                 }
                 return messageService.getAllMessages(apiGatewayRequest, context);
             case "DELETE":
