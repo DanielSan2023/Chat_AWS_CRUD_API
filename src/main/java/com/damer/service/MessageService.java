@@ -1,7 +1,6 @@
 package com.damer.service;
 
 import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBMapper;
-
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBQueryExpression;
@@ -20,16 +19,15 @@ import java.util.List;
 import java.util.Map;
 
 public class MessageService {
-    private DynamoDBMapper dynamoDBMapper;
+    private static DynamoDBMapper dynamoDBMapper;
     private static String jsonBody = null;
 
-//    public MessageService() {
-//        initDynamoDB();
-//    }
-
+    // Initialize DynamoDBMapper only once
     private void initDynamoDB() {
-        AmazonDynamoDB client = AmazonDynamoDBClientBuilder.standard().build();
-        dynamoDBMapper = new DynamoDBMapper(client);
+        if (dynamoDBMapper == null) {  // Check if dynamoDBMapper is already initialized
+            AmazonDynamoDB client = AmazonDynamoDBClientBuilder.standard().build();
+            dynamoDBMapper = new DynamoDBMapper(client);
+        }
     }
 
     private APIGatewayProxyResponseEvent createAPIResponse(String body, int statusCode, Map<String, String> headers) {
@@ -57,7 +55,7 @@ public class MessageService {
     private static void setMessage(Message message) {
         long timestamp = Instant.now().getEpochSecond();
         message.setMessId("mess" + timestamp);
-        message.setTimestamp(timestamp);
+        message.setTimeForStamp(timestamp);
         message.setIsCorrected(false);
     }
 
@@ -84,51 +82,52 @@ public class MessageService {
     }
 
     public APIGatewayProxyResponseEvent getMessagesByRoomIdAndTimestamp(APIGatewayProxyRequestEvent apiGatewayRequest, Context context) {
-        initDynamoDB();  // Initialize DynamoDB
+        initDynamoDB();
 
-        // Extract 'roomId' and 'timestamp' from the API Gateway request
-        String roomId = "companyB";
-        long timestamp = 1729761112L;
+        String roomId = apiGatewayRequest.getPathParameters() != null
+                ? apiGatewayRequest.getPathParameters().get("roomId")
+                : null;
+
+        String timestampStr = apiGatewayRequest.getQueryStringParameters() != null
+                ? apiGatewayRequest.getQueryStringParameters().get("timeForStamp")
+                : null;
 
         if (roomId == null || roomId.isEmpty()) {
             return createAPIResponse("roomId cannot be null or empty", 400, Utility.createHeaders());
         }
 
-        // Log the roomId
-        context.getLogger().log("Fetching messages for roomId: " + roomId);
+        long timestamp;
+        try {
+            timestamp = timestampStr != null ? Long.parseLong(timestampStr) : 0L; // default to 0 if not provided
+        } catch (NumberFormatException e) {
+            return createAPIResponse("Invalid timestamp format", 400, Utility.createHeaders());
+        }
 
-        // Create the expression attribute names to handle reserved words
-        Map<String, String> expressionAttributeNames = new HashMap<>();
-        expressionAttributeNames.put("#ts", "timestamp");
+        // Log the roomId and timestamp
+        context.getLogger().log("Fetching messages for roomId: " + roomId + " with timestamp: " + timestamp);
 
         // Create the expression attribute values for the query
         Map<String, AttributeValue> eav = new HashMap<>();
         eav.put(":roomId", new AttributeValue().withS(roomId));
         eav.put(":timestamp", new AttributeValue().withN(String.valueOf(timestamp)));
 
+        // Correct the key condition expression to match the entity
         DynamoDBQueryExpression<Message> queryExpression = new DynamoDBQueryExpression<Message>()
                 .withIndexName("RoomIndex")  // Use the GSI
                 .withConsistentRead(false)   // For GSI, consistent read must be false
-                .withKeyConditionExpression("roomId = :roomId and #ts >= :timestamp")
-                .withExpressionAttributeNames(expressionAttributeNames)
+                .withKeyConditionExpression("roomId = :roomId and timeForStamp >= :timestamp") // Use the correct attribute names
                 .withExpressionAttributeValues(eav);
 
-
-
-
-        // Perform the query
         try {
             List<Message> messages = dynamoDBMapper.query(Message.class, queryExpression);
             String jsonBody = Utility.convertListOfObjToString(messages, context);
-            context.getLogger().log("Fetched messages list for roomId:::" + jsonBody);
+            context.getLogger().log("Fetched messages list for roomId: " + roomId + " ::: " + jsonBody);
             return createAPIResponse(jsonBody, 200, Utility.createHeaders());
         } catch (AmazonDynamoDBException e) {
             context.getLogger().log("DynamoDB error: " + e.getMessage());
             return createAPIResponse("Error fetching messages: " + e.getMessage(), 500, Utility.createHeaders());
         }
     }
-
-
 
     public APIGatewayProxyResponseEvent deleteMessageById(APIGatewayProxyRequestEvent apiGatewayRequest, Context context) {
         initDynamoDB();
@@ -143,5 +142,4 @@ public class MessageService {
             return createAPIResponse(jsonBody, 400, Utility.createHeaders());
         }
     }
-
 }

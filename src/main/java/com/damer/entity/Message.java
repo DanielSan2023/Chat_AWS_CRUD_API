@@ -12,7 +12,7 @@ public class Message {
     private String roomId;
 
 
-    private long timestamp;
+    private long timeForStamp;
 
     @DynamoDBAttribute(attributeName = "sender")
     private String sender;
@@ -57,13 +57,13 @@ public class Message {
         this.content = content;
     }
 
-    @DynamoDBIndexRangeKey(globalSecondaryIndexName = "RoomIndex", attributeName = "timestamp")
-    public long getTimestamp() {
-        return timestamp;
+    @DynamoDBIndexRangeKey(globalSecondaryIndexName = "RoomIndex", attributeName = "timeForStamp")
+    public long getTimeForStamp() {
+        return timeForStamp;
     }
 
-    public void setTimestamp(long timestamp) {
-        this.timestamp = timestamp;
+    public void setTimeForStamp(long timeForStamp) {
+        this.timeForStamp = timeForStamp;
     }
 
     public Boolean getIsCorrected() {
