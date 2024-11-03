@@ -2,26 +2,22 @@ package com.damer.entity;
 
 import com.amazonaws.services.dynamodbv2.datamodeling.*;
 
-@DynamoDBTable(tableName = "message")
+@DynamoDBTable(tableName = "Message")
 public class Message {
 
-    @DynamoDBHashKey(attributeName = "messId")
+    @DynamoDBHashKey(attributeName = "MessId")
     private String messId;
-
-
     private String roomId;
-
-
     private long timeForStamp;
 
-    @DynamoDBAttribute(attributeName = "sender")
+    @DynamoDBAttribute(attributeName = "Sender")
     private String sender;
 
-    @DynamoDBAttribute(attributeName = "content")
+    @DynamoDBAttribute(attributeName = "Content")
     private String content;
 
 
-    @DynamoDBAttribute(attributeName = "isCorrected")
+    @DynamoDBAttribute(attributeName = "IsCorrected")
     private Boolean isCorrected;
 
     public String getMessId() {
@@ -40,7 +36,7 @@ public class Message {
         this.sender = sender;
     }
 
-    @DynamoDBIndexHashKey(globalSecondaryIndexName = "RoomIndex", attributeName = "roomId")
+    @DynamoDBIndexHashKey(globalSecondaryIndexName = "RoomId-TimeForStamp-index", attributeName = "RoomId")
     public String getRoomId() {
         return roomId;
     }
@@ -57,7 +53,7 @@ public class Message {
         this.content = content;
     }
 
-    @DynamoDBIndexRangeKey(globalSecondaryIndexName = "RoomIndex", attributeName = "timeForStamp")
+    @DynamoDBIndexRangeKey(globalSecondaryIndexName = "RoomId-TimeForStamp-index", attributeName = "TimeForStamp")
     public long getTimeForStamp() {
         return timeForStamp;
     }
