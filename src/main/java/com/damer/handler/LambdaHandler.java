@@ -16,7 +16,8 @@ public class LambdaHandler implements RequestHandler<APIGatewayProxyRequestEvent
 
             case "POST":
                 return messageService.saveMessage(apiGatewayRequest, context);
-
+            case "PUT":
+                return messageService.updateMessageById(apiGatewayRequest, context);
             case "GET":
                 if (apiGatewayRequest.getPathParameters() != null) {
                     return messageService.getMessagesByRoomIdAndTimestamp(apiGatewayRequest, context);
