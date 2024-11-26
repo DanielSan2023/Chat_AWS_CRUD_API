@@ -22,18 +22,16 @@ import software.amazon.awssdk.services.ses.model.SendEmailRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class MessageService {
-    private static DynamoDBMapper dynamoDBMapper;
     private static String jsonBody = null;
-    private SesClient sesClient;
+    private static DynamoDBMapper dynamoDBMapper;
     private static final Logger logger = LoggerFactory.getLogger(LambdaHandler.class);
-
+    private SesClient sesClient;
 
     private void initDynamoDB() {
         if (dynamoDBMapper == null) {
