@@ -1,6 +1,5 @@
 package com.damer.utility;
 
-import com.amazonaws.services.dynamodbv2.model.AttributeValue;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.damer.entity.Message;
 import com.fasterxml.jackson.core.JsonProcessingException;

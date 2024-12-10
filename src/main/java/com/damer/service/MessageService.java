@@ -7,6 +7,7 @@ import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBMapperConfig;
 import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBQueryExpression;
 import com.amazonaws.services.dynamodbv2.model.AmazonDynamoDBException;
 import com.amazonaws.services.dynamodbv2.model.AttributeValue;
+import com.amazonaws.services.dynamodbv2.model.ResourceNotFoundException;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
@@ -32,7 +33,8 @@ public class MessageService {
     private final Map<String, DynamoDBMapper> mappers = new HashMap<>();
     private SesClient sesClient;
 
-    public static final String TABLE_NAME = "Message_assistance_";
+    public static final String TABLE_NAME_PREFIX = "Message_assistance_";
+    final String EMAIL_SUBJECT = "New message was created.";
     final String ADMIN_EMAIL = "spartanboy1984@gmail.com";
 
     private DynamoDBMapper getCachedDynamoDBMapper(String tableName) {
@@ -53,26 +55,31 @@ public class MessageService {
         return responseEvent;
     }
 
+    private void validateTableExists(String tableName, Context context) {
+        AmazonDynamoDB dynamoDB = AmazonDynamoDBClientBuilder.defaultClient();
+        try {
+            dynamoDB.describeTable(tableName);
+        } catch (ResourceNotFoundException e) {
+            context.getLogger().log("Table validation failed: " + tableName);
+            createAPIResponse("Table not found: " + e.getMessage(), 404, Utility.createHeaders());
+            throw e;
+        }
+    }
+
     public APIGatewayProxyResponseEvent saveMessage(APIGatewayProxyRequestEvent apiGatewayRequest, Context context) {
         try {
-            Message message = Utility.convertStringToObj(apiGatewayRequest.getBody(), context);
-            if (message == null || message.getContent() == null) {
-                throw new IllegalArgumentException("Message content cannot be null");
-            }
-            setMessage(message);
+            Message message = validateAndCreateMessage(apiGatewayRequest.getBody(), context);
 
             String firma = message.getFirma();
             if (firma == null || firma.isEmpty()) {
                 return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
             }
 
-            String tableName = TABLE_NAME + firma;
-            DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
-            mapper.save(message);
+            String tableName = getTableName(message.getFirma(), context);
+            validateTableExists(tableName, context);
 
-            String messId = message.getMessId();
-            String content = message.getContent();
-            sendEmailNotification(messId, content);
+            getCachedDynamoDBMapper(tableName).save(message);
+            sendEmailNotification(message.getMessId(), message.getContent());
 
             String jsonBody = Utility.convertObjToString(message, context);
             context.getLogger().log("Data saved successfully to DynamoDB: " + jsonBody);
@@ -82,21 +89,27 @@ public class MessageService {
         } catch (IllegalArgumentException ex) {
             context.getLogger().log("Invalid input: " + ex.getMessage());
             return createAPIResponse("Invalid input: " + ex.getMessage(), 400, Utility.createHeaders());
+        } catch (ResourceNotFoundException ex) {
+            return createAPIResponse("Table not found: " + ex.getMessage(), 404, Utility.createHeaders());
         } catch (Exception ex) {
             context.getLogger().log("Error processing request: " + ex.getMessage());
             return createAPIResponse("Internal server error: " + ex.getMessage(), 500, Utility.createHeaders());
         }
     }
 
-    private static void setMessage(Message message) {
+    private Message validateAndCreateMessage(String body, Context context) {
+        Message message = Utility.convertStringToObj(body, context);
+        if (message == null || message.getContent() == null) {
+            throw new IllegalArgumentException("Message content cannot be null");
+        }
         long timestamp = Instant.now().getEpochSecond();
         message.setMessId("mess" + timestamp);
         message.setTimeForStamp(timestamp);
         message.setIsCorrected(false);
+        return message;
     }
 
     private void sendEmailNotification(String messageId, String content) {
-        String subject = "New message was created.";
         String bodyText = String.format("New message was created:\n\nID: %s\nContent: %s", messageId, content);
 
         if (sesClient == null) {
@@ -106,7 +119,7 @@ public class MessageService {
         SendEmailRequest emailRequest = SendEmailRequest.builder()
                 .destination(Destination.builder().toAddresses(ADMIN_EMAIL).build())
                 .message(software.amazon.awssdk.services.ses.model.Message.builder()
-                        .subject(Content.builder().data(subject).build())
+                        .subject(Content.builder().data(EMAIL_SUBJECT).build())
                         .body(Body.builder().text(Content.builder().data(bodyText).build()).build())
                         .build())
                 .source(ADMIN_EMAIL)
@@ -131,9 +144,8 @@ public class MessageService {
             if (firma == null || firma.isEmpty()) {
                 return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
             }
-            //TODO     ResourceNotFoundException ex
-            String tableName = TABLE_NAME + firma;
-            context.getLogger().log("Update data to table: " + tableName);
+
+            String tableName = getTableName(firma, context);
             DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
 
             String messId = apiGatewayRequest.getPathParameters().get("messId");
@@ -158,6 +170,9 @@ public class MessageService {
         } catch (IllegalArgumentException ex) {
             context.getLogger().log("Invalid input: " + ex.getMessage());
             return createAPIResponse("Invalid input: " + ex.getMessage(), 400, Utility.createHeaders());
+        } catch (ResourceNotFoundException ex) {
+            context.getLogger().log("Table not found: " + ex.getMessage());
+            return createAPIResponse("Table not found: " + ex.getMessage(), 404, Utility.createHeaders());
         } catch (Exception ex) {
             context.getLogger().log("Error processing request: " + ex.getMessage());
             return createAPIResponse("Internal server error: " + ex.getMessage(), 500, Utility.createHeaders());
@@ -184,48 +199,53 @@ public class MessageService {
     }
 
     public APIGatewayProxyResponseEvent getMessagesByCompanyByRoomIdAndTimestamp(APIGatewayProxyRequestEvent apiGatewayRequest, Context context) {
-        String firma = getCompanyName(apiGatewayRequest);
-        if (firma == null || firma.isEmpty()) {
-            return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
-        }
-
-        String roomId = getRoomId(apiGatewayRequest);
-        if (roomId == null || roomId.isEmpty()) {
-            return createAPIResponse("roomId cannot be null or empty", 400, Utility.createHeaders());
-        }
-
-        Result result = getStartAndEndTime(apiGatewayRequest);
-        long startTimestamp, endTimestamp;
-
         try {
-            startTimestamp = result.startTimestampStr() != null ? Long.parseLong(result.startTimestampStr()) : 0L;
-            endTimestamp = result.endTimestampStr() != null ? Long.parseLong(result.endTimestampStr()) : Long.MAX_VALUE;
-        } catch (NumberFormatException e) {
-            return createAPIResponse("Invalid timestamp format", 400, Utility.createHeaders());
-        }
+            String firma = getCompanyName(apiGatewayRequest);
+            if (firma == null || firma.isEmpty()) {
+                return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
+            }
 
-        context.getLogger().log("Fetching messages for roomId: " + roomId +
-                " between timestamps: " + startTimestamp + " and " + endTimestamp);
+            String roomId = getRoomId(apiGatewayRequest);
+            if (roomId == null || roomId.isEmpty()) {
+                return createAPIResponse("roomId cannot be null or empty", 400, Utility.createHeaders());
+            }
 
-        Map<String, AttributeValue> eav = new HashMap<>();
-        eav.put(":roomId", new AttributeValue().withS(roomId));
-        eav.put(":startTimestamp", new AttributeValue().withN(String.valueOf(startTimestamp)));
-        eav.put(":endTimestamp", new AttributeValue().withN(String.valueOf(endTimestamp)));
+            Result result = getStartAndEndTime(apiGatewayRequest);
+            long startTimestamp, endTimestamp;
 
-        DynamoDBQueryExpression<Message> queryExpression = new DynamoDBQueryExpression<Message>()
-                .withIndexName("RoomId-TimeForStamp-index")
-                .withConsistentRead(false)
-                .withKeyConditionExpression("RoomId = :roomId and TimeForStamp BETWEEN :startTimestamp and :endTimestamp")
-                .withExpressionAttributeValues(eav);
+            try {
+                startTimestamp = result.startTimestampStr() != null ? Long.parseLong(result.startTimestampStr()) : 0L;
+                endTimestamp = result.endTimestampStr() != null ? Long.parseLong(result.endTimestampStr()) : Long.MAX_VALUE;
+            } catch (NumberFormatException e) {
+                return createAPIResponse("Invalid timestamp format", 400, Utility.createHeaders());
+            }
 
-        String tableName = TABLE_NAME + firma;
-        DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
+            context.getLogger().log("Fetching messages for roomId: " + roomId +
+                    " between timestamps: " + startTimestamp + " and " + endTimestamp);
 
-        try {
+            Map<String, AttributeValue> eav = new HashMap<>();
+            eav.put(":roomId", new AttributeValue().withS(roomId));
+            eav.put(":startTimestamp", new AttributeValue().withN(String.valueOf(startTimestamp)));
+            eav.put(":endTimestamp", new AttributeValue().withN(String.valueOf(endTimestamp)));
+
+            DynamoDBQueryExpression<Message> queryExpression = new DynamoDBQueryExpression<Message>()
+                    .withIndexName("RoomId-TimeForStamp-index")
+                    .withConsistentRead(false)
+                    .withKeyConditionExpression("RoomId = :roomId and TimeForStamp BETWEEN :startTimestamp and :endTimestamp")
+                    .withExpressionAttributeValues(eav);
+
+            String tableName = getTableName(firma, context);
+            validateTableExists(tableName, context);
+
+            DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
+
             List<Message> messages = mapper.query(Message.class, queryExpression);
             String jsonBody = Utility.convertListOfObjToString(messages, context);
             context.getLogger().log("Fetched messages list for roomId: " + roomId + " ::: " + jsonBody);
             return createAPIResponse(jsonBody, 200, Utility.createHeaders());
+
+        } catch (ResourceNotFoundException ex) {
+            return createAPIResponse("Table not found: " + ex.getMessage(), 404, Utility.createHeaders());
         } catch (AmazonDynamoDBException e) {
             context.getLogger().log("DynamoDB error: " + e.getMessage());
             return createAPIResponse("Error fetching messages: " + e.getMessage(), 500, Utility.createHeaders());
@@ -257,24 +277,43 @@ public class MessageService {
                 : null;
     }
 
-    public APIGatewayProxyResponseEvent deleteMessageById(APIGatewayProxyRequestEvent apiGatewayRequest, Context context) {
-        String firma = getCompanyName(apiGatewayRequest);
+
+    private String getTableName(String firma, Context context) {
         if (firma == null || firma.isEmpty()) {
-            return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
+            throw new IllegalArgumentException("Parameter 'firma' is required");
         }
+        String tableName = TABLE_NAME_PREFIX + firma;
+        validateTableExists(tableName, context);
+        return tableName;
+    }
 
-        String tableName = TABLE_NAME + firma;
-        DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
+    public APIGatewayProxyResponseEvent deleteMessageById(APIGatewayProxyRequestEvent apiGatewayRequest, Context context) {
+        try {
+            String firma = getCompanyName(apiGatewayRequest);
+            if (firma == null || firma.isEmpty()) {
+                return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
+            }
 
-        String messId = apiGatewayRequest.getPathParameters().get("messId");
-        Message message = mapper.load(Message.class, messId);
-        if (message != null) {
-            mapper.delete(message);
-            context.getLogger().log("data deleted successfully :::" + messId);
-            return createAPIResponse("data deleted successfully." + messId, 200, Utility.createHeaders());
-        } else {
-            String jsonBody = "Message Not Found Exception :" + messId;
-            return createAPIResponse(jsonBody, 400, Utility.createHeaders());
+            String tableName = getTableName(firma, context);
+            validateTableExists(tableName, context);
+
+            DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
+
+            String messId = apiGatewayRequest.getPathParameters().get("messId");
+            Message message = mapper.load(Message.class, messId);
+            if (message != null) {
+                mapper.delete(message);
+                context.getLogger().log("data deleted successfully :::" + messId);
+                return createAPIResponse("data deleted successfully." + messId, 200, Utility.createHeaders());
+            } else {
+                String jsonBody = "Message Not Found Exception :" + messId;
+                return createAPIResponse(jsonBody, 400, Utility.createHeaders());
+            }
+        } catch (ResourceNotFoundException ex) {
+            return createAPIResponse("Table not found: " + ex.getMessage(), 404, Utility.createHeaders());
+        } catch (AmazonDynamoDBException e) {
+            context.getLogger().log("DynamoDB error: " + e.getMessage());
+            return createAPIResponse("Error deleting message: " + e.getMessage(), 500, Utility.createHeaders());
         }
     }
 }
