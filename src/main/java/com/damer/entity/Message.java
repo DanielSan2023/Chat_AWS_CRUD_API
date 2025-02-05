@@ -2,18 +2,17 @@ package com.damer.entity;
 
 import com.amazonaws.services.dynamodbv2.datamodeling.*;
 
-@DynamoDBTable(tableName = "Message_assistance_try")
+@DynamoDBTable(tableName = "message_assistance_try")
 public class Message {
 
     @DynamoDBHashKey(attributeName = "MessId")
     private String messId;
 
-    @DynamoDBAttribute(attributeName = "Firma")
-    private String firma;
-
-    private String roomId;
-
+    @DynamoDBAttribute(attributeName = "TimeForStamp")
     private long timeForStamp;
+
+    @DynamoDBAttribute(attributeName = "RoomId")
+    private String roomId;
 
     @DynamoDBAttribute(attributeName = "Sender")
     private String sender;
@@ -30,14 +29,6 @@ public class Message {
 
     public void setMessId(String messId) {
         this.messId = messId;
-    }
-
-    public String getFirma() {
-        return firma;
-    }
-
-    public void setFirma(String firma) {
-        this.firma = firma;
     }
 
     public String getSender() {

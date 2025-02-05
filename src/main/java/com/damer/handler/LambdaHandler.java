@@ -2,17 +2,17 @@ package com.damer.handler;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
-import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
-import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
+import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPEvent;
+import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPResponse;
 import com.damer.service.MessageService;
 
-public class LambdaHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
+public class LambdaHandler implements RequestHandler<APIGatewayV2HTTPEvent, APIGatewayV2HTTPResponse> {
 
     @Override
-    public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent apiGatewayRequest, Context context) {
+    public APIGatewayV2HTTPResponse handleRequest(APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
         MessageService messageService = new MessageService();
 
-        switch (apiGatewayRequest.getHttpMethod()) {
+        switch (apiGatewayRequest.getRequestContext().getHttp().getMethod()) {
 
             case "POST":
                 return messageService.saveMessage(apiGatewayRequest, context);
@@ -27,7 +27,7 @@ public class LambdaHandler implements RequestHandler<APIGatewayProxyRequestEvent
                     return messageService.deleteMessageById(apiGatewayRequest, context);
                 }
             default:
-                throw new Error("Unsupported Methods:::" + apiGatewayRequest.getHttpMethod());
+                throw new Error("Unsupported Methods:::" + apiGatewayRequest.getRequestContext().getHttp().getMethod());
 
         }
     }

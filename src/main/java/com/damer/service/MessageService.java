@@ -1,27 +1,26 @@
 package com.damer.service;
 
-import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBMapper;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
+import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBMapper;
 import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBMapperConfig;
 import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBQueryExpression;
 import com.amazonaws.services.dynamodbv2.model.AmazonDynamoDBException;
 import com.amazonaws.services.dynamodbv2.model.AttributeValue;
 import com.amazonaws.services.dynamodbv2.model.ResourceNotFoundException;
 import com.amazonaws.services.lambda.runtime.Context;
-import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
-import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
-
+import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPEvent;
+import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPResponse;
 import com.damer.entity.Message;
 import com.damer.handler.LambdaHandler;
 import com.damer.utility.Utility;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.ses.SesClient;
 import software.amazon.awssdk.services.ses.model.Body;
 import software.amazon.awssdk.services.ses.model.Content;
 import software.amazon.awssdk.services.ses.model.Destination;
 import software.amazon.awssdk.services.ses.model.SendEmailRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -33,7 +32,7 @@ public class MessageService {
     private final Map<String, DynamoDBMapper> mappers = new HashMap<>();
     private SesClient sesClient;
 
-    public static final String TABLE_NAME_PREFIX = "Message_assistance_";
+    public static final String TABLE_NAME_PREFIX = "message_assistance_try";
     final String EMAIL_SUBJECT = "New message was created.";
     final String ADMIN_EMAIL = "spartanboy1984@gmail.com";
 
@@ -47,8 +46,8 @@ public class MessageService {
         });
     }
 
-    private APIGatewayProxyResponseEvent createAPIResponse(String body, int statusCode, Map<String, String> headers) {
-        APIGatewayProxyResponseEvent responseEvent = new APIGatewayProxyResponseEvent();
+    private APIGatewayV2HTTPResponse createAPIResponse(String body, int statusCode, Map<String, String> headers) {
+        APIGatewayV2HTTPResponse responseEvent = new APIGatewayV2HTTPResponse();
         responseEvent.setBody(body);
         responseEvent.setHeaders(headers);
         responseEvent.setStatusCode(statusCode);
@@ -66,16 +65,11 @@ public class MessageService {
         }
     }
 
-    public APIGatewayProxyResponseEvent saveMessage(APIGatewayProxyRequestEvent apiGatewayRequest, Context context) {
+    public APIGatewayV2HTTPResponse saveMessage(APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
         try {
             Message message = validateAndCreateMessage(apiGatewayRequest.getBody(), context);
 
-            String firma = message.getFirma();
-            if (firma == null || firma.isEmpty()) {
-                return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
-            }
-
-            String tableName = getTableName(message.getFirma(), context);
+            String tableName = getTableName(context);
             validateTableExists(tableName, context);
 
             getCachedDynamoDBMapper(tableName).save(message);
@@ -133,26 +127,26 @@ public class MessageService {
         }
     }
 
-    public APIGatewayProxyResponseEvent updateMessageById(APIGatewayProxyRequestEvent apiGatewayRequest, Context context) {
+    public APIGatewayV2HTTPResponse updateMessageById(APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
         try {
             Message message = Utility.convertStringToObj(apiGatewayRequest.getBody(), context);
             if (message == null || message.getContent() == null) {
                 throw new IllegalArgumentException("Message content cannot be null");
             }
 
-            String firma = message.getFirma();
-            if (firma == null || firma.isEmpty()) {
-                return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
-            }
+//            String firma = message.getFirma();
+//            if (firma == null || firma.isEmpty()) {
+//                return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
+//            }
 
-            String tableName = getTableName(firma, context);
+            String tableName = getTableName(context);
             DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
 
             String messId = apiGatewayRequest.getPathParameters().get("messId");
             String author = apiGatewayRequest.getQueryStringParameters().get("sender");
 
             Message existingMessage = mapper.load(Message.class, messId);
-            APIGatewayProxyResponseEvent validationResponse = validateMessageForUpdate(existingMessage, author, apiGatewayRequest, context);
+            APIGatewayV2HTTPResponse validationResponse = validateMessageForUpdate(existingMessage, author, apiGatewayRequest, context);
             if (validationResponse != null) {
                 return validationResponse;
             }
@@ -179,8 +173,8 @@ public class MessageService {
         }
     }
 
-    private APIGatewayProxyResponseEvent validateMessageForUpdate(
-            Message existingMessage, String author, APIGatewayProxyRequestEvent apiGatewayRequest, Context context) {
+    private APIGatewayV2HTTPResponse validateMessageForUpdate(
+            Message existingMessage, String author, APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
         if (existingMessage == null) {
             context.getLogger().log("Message Not Found: " + apiGatewayRequest.getPathParameters().get("messId"));
             return createAPIResponse("Message Not Found", 404, Utility.createHeaders());
@@ -198,12 +192,9 @@ public class MessageService {
         return null;
     }
 
-    public APIGatewayProxyResponseEvent getMessagesByCompanyByRoomIdAndTimestamp(APIGatewayProxyRequestEvent apiGatewayRequest, Context context) {
+    public APIGatewayV2HTTPResponse getMessagesByCompanyByRoomIdAndTimestamp(APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
         try {
-            String firma = getCompanyName(apiGatewayRequest);
-            if (firma == null || firma.isEmpty()) {
-                return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
-            }
+
 
             String roomId = getRoomId(apiGatewayRequest);
             if (roomId == null || roomId.isEmpty()) {
@@ -234,7 +225,7 @@ public class MessageService {
                     .withKeyConditionExpression("RoomId = :roomId and TimeForStamp BETWEEN :startTimestamp and :endTimestamp")
                     .withExpressionAttributeValues(eav);
 
-            String tableName = getTableName(firma, context);
+            String tableName = getTableName(context);
             validateTableExists(tableName, context);
 
             DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
@@ -255,7 +246,7 @@ public class MessageService {
     private record Result(String startTimestampStr, String endTimestampStr) {
     }
 
-    private static Result getStartAndEndTime(APIGatewayProxyRequestEvent apiGatewayRequest) {
+    private static Result getStartAndEndTime(APIGatewayV2HTTPEvent apiGatewayRequest) {
         String startTimestampStr = apiGatewayRequest.getQueryStringParameters() != null
                 ? apiGatewayRequest.getQueryStringParameters().get("startTimestamp")
                 : null;
@@ -265,36 +256,24 @@ public class MessageService {
         return new Result(startTimestampStr, endTimestampStr);
     }
 
-    private static String getRoomId(APIGatewayProxyRequestEvent apiGatewayRequest) {
+    private static String getRoomId(APIGatewayV2HTTPEvent apiGatewayRequest) {
         return apiGatewayRequest.getPathParameters() != null
                 ? apiGatewayRequest.getPathParameters().get("roomId")
                 : null;
     }
 
-    private static String getCompanyName(APIGatewayProxyRequestEvent apiGatewayRequest) {
-        return apiGatewayRequest.getQueryStringParameters() != null
-                ? apiGatewayRequest.getQueryStringParameters().get("firma")
-                : null;
-    }
 
-
-    private String getTableName(String firma, Context context) {
-        if (firma == null || firma.isEmpty()) {
-            throw new IllegalArgumentException("Parameter 'firma' is required");
-        }
-        String tableName = TABLE_NAME_PREFIX + firma;
+    private String getTableName(Context context) {
+        String tableName = TABLE_NAME_PREFIX;
         validateTableExists(tableName, context);
         return tableName;
     }
 
-    public APIGatewayProxyResponseEvent deleteMessageById(APIGatewayProxyRequestEvent apiGatewayRequest, Context context) {
+    public APIGatewayV2HTTPResponse deleteMessageById(APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
         try {
-            String firma = getCompanyName(apiGatewayRequest);
-            if (firma == null || firma.isEmpty()) {
-                return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
-            }
 
-            String tableName = getTableName(firma, context);
+
+            String tableName = getTableName(context);
             validateTableExists(tableName, context);
 
             DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
