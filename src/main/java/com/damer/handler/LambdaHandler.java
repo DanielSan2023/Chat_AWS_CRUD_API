@@ -12,23 +12,36 @@ public class LambdaHandler implements RequestHandler<APIGatewayV2HTTPEvent, APIG
     public APIGatewayV2HTTPResponse handleRequest(APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
         MessageService messageService = new MessageService();
 
-        switch (apiGatewayRequest.getRequestContext().getHttp().getMethod()) {
+        String httpMethod = apiGatewayRequest.getRequestContext().getHttp().getMethod();
 
+        switch (httpMethod) {
             case "POST":
                 return messageService.saveMessage(apiGatewayRequest, context);
-            case "PUT":
-                return messageService.updateMessageById(apiGatewayRequest, context);
+
             case "GET":
                 if (apiGatewayRequest.getPathParameters() != null) {
                     return messageService.getMessagesByCompanyByRoomIdAndTimestamp(apiGatewayRequest, context);
                 }
+                return createErrorResponse(400, "Missing path parameters for GET request");
+
+            case "PUT":
+                return messageService.updateMessageById(apiGatewayRequest, context);
+
             case "DELETE":
                 if (apiGatewayRequest.getPathParameters() != null) {
                     return messageService.deleteMessageById(apiGatewayRequest, context);
                 }
-            default:
-                throw new Error("Unsupported Methods:::" + apiGatewayRequest.getRequestContext().getHttp().getMethod());
+                return createErrorResponse(400, "Missing path parameters for DELETE request");
 
+            default:
+                return createErrorResponse(405, "Unsupported Method: " + httpMethod);
         }
+    }
+
+    private APIGatewayV2HTTPResponse createErrorResponse(int statusCode, String message) {
+        return APIGatewayV2HTTPResponse.builder()
+                .withStatusCode(statusCode)
+                .withBody("{\"error\": \"" + message + "\"}")
+                .build();
     }
 }
