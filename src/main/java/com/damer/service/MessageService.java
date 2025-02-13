@@ -194,8 +194,6 @@ public class MessageService {
 
     public APIGatewayV2HTTPResponse getMessagesByCompanyByRoomIdAndTimestamp(APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
         try {
-
-
             String roomId = getRoomId(apiGatewayRequest);
             if (roomId == null || roomId.isEmpty()) {
                 return createAPIResponse("roomId cannot be null or empty", 400, Utility.createHeaders());
