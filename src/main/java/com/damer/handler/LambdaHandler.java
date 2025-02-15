@@ -14,28 +14,24 @@ public class LambdaHandler implements RequestHandler<APIGatewayV2HTTPEvent, APIG
 
         String httpMethod = apiGatewayRequest.getRequestContext().getHttp().getMethod();
 
-        switch (httpMethod) {
-            case "POST":
-                return messageService.saveMessage(apiGatewayRequest, context);
 
-            case "GET":
+        return switch (httpMethod) {
+            case "POST" -> messageService.saveMessage(apiGatewayRequest, context);
+            case "GET" -> {
                 if (apiGatewayRequest.getPathParameters() != null) {
-                    return messageService.getMessagesByCompanyByRoomIdAndTimestamp(apiGatewayRequest, context);
+                    yield messageService.getMessagesByCompanyByRoomIdAndTimestamp(apiGatewayRequest, context);
                 }
-                return createErrorResponse(400, "Missing path parameters for GET request");
-
-            case "PUT":
-                return messageService.updateMessageById(apiGatewayRequest, context);
-
-            case "DELETE":
+                yield createErrorResponse(400, "Missing path parameters for GET request");
+            }
+            case "PUT" -> messageService.updateMessageById(apiGatewayRequest, context);
+            case "DELETE" -> {
                 if (apiGatewayRequest.getPathParameters() != null) {
-                    return messageService.deleteMessageById(apiGatewayRequest, context);
+                    yield messageService.deleteMessageById(apiGatewayRequest, context);
                 }
-                return createErrorResponse(400, "Missing path parameters for DELETE request");
-
-            default:
-                return createErrorResponse(405, "Unsupported Method: " + httpMethod);
-        }
+                yield createErrorResponse(400, "Missing path parameters for DELETE request");
+            }
+            default -> createErrorResponse(405, "Unsupported Method: " + httpMethod);
+        };
     }
 
     private APIGatewayV2HTTPResponse createErrorResponse(int statusCode, String message) {
