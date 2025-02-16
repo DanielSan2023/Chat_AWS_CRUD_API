@@ -138,19 +138,14 @@ public class MessageService {
                 throw new IllegalArgumentException("Message content cannot be null");
             }
 
-//            String firma = message.getFirma();
-//            if (firma == null || firma.isEmpty()) {
-//                return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
-//            }
 
             String tableName = getTableName(apiGatewayRequest, context);
             DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
 
             String messId = apiGatewayRequest.getPathParameters().get("messId");
-            String author = apiGatewayRequest.getQueryStringParameters().get("sender");
 
             Message existingMessage = mapper.load(Message.class, messId);
-            APIGatewayV2HTTPResponse validationResponse = validateMessageForUpdate(existingMessage, author, apiGatewayRequest, context);
+            APIGatewayV2HTTPResponse validationResponse = validateMessageForUpdate(existingMessage, apiGatewayRequest, context);
             if (validationResponse != null) {
                 return validationResponse;
             }
@@ -178,15 +173,10 @@ public class MessageService {
     }
 
     private APIGatewayV2HTTPResponse validateMessageForUpdate(
-            Message existingMessage, String author, APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
+            Message existingMessage, APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
         if (existingMessage == null) {
             context.getLogger().log("Message Not Found: " + apiGatewayRequest.getPathParameters().get("messId"));
             return createAPIResponse("Message Not Found", 404, Utility.createHeaders());
-        }
-
-        if (!existingMessage.getSender().equals(author)) {
-            context.getLogger().log("Unauthorized access attempt by: " + author);
-            return createAPIResponse("Unauthorized: Only the original author can update this message.", 403, Utility.createHeaders());
         }
 
         if (Utility.convertStringToObj(apiGatewayRequest.getBody(), context) == null) {
