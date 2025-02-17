@@ -14,6 +14,7 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPResponse;
 import com.damer.entity.Message;
 import com.damer.handler.LambdaHandler;
 import com.damer.utility.Utility;
+import org.apache.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.ses.SesClient;
@@ -32,9 +33,12 @@ public class MessageService {
     private final Map<String, DynamoDBMapper> mappers = new HashMap<>();
     private SesClient sesClient;
 
-    public static final String TABLE_NAME_PREFIX = "message_assistance_try";
     final String EMAIL_SUBJECT = "New message was created.";
     final String ADMIN_EMAIL = "spartanboy1984@gmail.com";
+
+    private static final String TABLE_NAME_PREFIX = "message_assistance_";
+    private static final String KEY_FOR_COGNITO_GROUPS = "cognito:groups";
+    private static final String KEY_STAGE_VARIABLE = "table";
 
     private DynamoDBMapper getCachedDynamoDBMapper(String tableName) {
         return mappers.computeIfAbsent(tableName, name -> {
@@ -69,7 +73,7 @@ public class MessageService {
         try {
             Message message = validateAndCreateMessage(apiGatewayRequest.getBody(), context);
 
-            String tableName = getTableName(context);
+            String tableName = getTableName(apiGatewayRequest, context);
             validateTableExists(tableName, context);
 
             getCachedDynamoDBMapper(tableName).save(message);
@@ -78,16 +82,16 @@ public class MessageService {
             String jsonBody = Utility.convertObjToString(message, context);
             context.getLogger().log("Data saved successfully to DynamoDB: " + jsonBody);
 
-            return createAPIResponse(jsonBody, 201, Utility.createHeaders());
+            return createAPIResponse(jsonBody, HttpStatus.SC_CREATED, Utility.createHeaders());
 
         } catch (IllegalArgumentException ex) {
             context.getLogger().log("Invalid input: " + ex.getMessage());
-            return createAPIResponse("Invalid input: " + ex.getMessage(), 400, Utility.createHeaders());
+            return createAPIResponse("Invalid input: " + ex.getMessage(), HttpStatus.SC_BAD_REQUEST, Utility.createHeaders());
         } catch (ResourceNotFoundException ex) {
-            return createAPIResponse("Table not found: " + ex.getMessage(), 404, Utility.createHeaders());
+            return createAPIResponse("Table not found: " + ex.getMessage(), HttpStatus.SC_NOT_FOUND, Utility.createHeaders());
         } catch (Exception ex) {
             context.getLogger().log("Error processing request: " + ex.getMessage());
-            return createAPIResponse("Internal server error: " + ex.getMessage(), 500, Utility.createHeaders());
+            return createAPIResponse("Internal server error: " + ex.getMessage(), HttpStatus.SC_INTERNAL_SERVER_ERROR, Utility.createHeaders());
         }
     }
 
@@ -134,19 +138,14 @@ public class MessageService {
                 throw new IllegalArgumentException("Message content cannot be null");
             }
 
-//            String firma = message.getFirma();
-//            if (firma == null || firma.isEmpty()) {
-//                return createAPIResponse("Parameter 'firma' is required", 400, Utility.createHeaders());
-//            }
 
-            String tableName = getTableName(context);
+            String tableName = getTableName(apiGatewayRequest, context);
             DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
 
             String messId = apiGatewayRequest.getPathParameters().get("messId");
-            String author = apiGatewayRequest.getQueryStringParameters().get("sender");
 
             Message existingMessage = mapper.load(Message.class, messId);
-            APIGatewayV2HTTPResponse validationResponse = validateMessageForUpdate(existingMessage, author, apiGatewayRequest, context);
+            APIGatewayV2HTTPResponse validationResponse = validateMessageForUpdate(existingMessage, apiGatewayRequest, context);
             if (validationResponse != null) {
                 return validationResponse;
             }
@@ -174,15 +173,10 @@ public class MessageService {
     }
 
     private APIGatewayV2HTTPResponse validateMessageForUpdate(
-            Message existingMessage, String author, APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
+            Message existingMessage, APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
         if (existingMessage == null) {
             context.getLogger().log("Message Not Found: " + apiGatewayRequest.getPathParameters().get("messId"));
             return createAPIResponse("Message Not Found", 404, Utility.createHeaders());
-        }
-
-        if (!existingMessage.getSender().equals(author)) {
-            context.getLogger().log("Unauthorized access attempt by: " + author);
-            return createAPIResponse("Unauthorized: Only the original author can update this message.", 403, Utility.createHeaders());
         }
 
         if (Utility.convertStringToObj(apiGatewayRequest.getBody(), context) == null) {
@@ -223,7 +217,7 @@ public class MessageService {
                     .withKeyConditionExpression("RoomId = :roomId and TimeForStamp BETWEEN :startTimestamp and :endTimestamp")
                     .withExpressionAttributeValues(eav);
 
-            String tableName = getTableName(context);
+            String tableName = getTableName(apiGatewayRequest, context);
             validateTableExists(tableName, context);
 
             DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
@@ -261,17 +255,28 @@ public class MessageService {
     }
 
 
-    private String getTableName(Context context) {
-        String tableName = TABLE_NAME_PREFIX;
+    private String getTableName(APIGatewayV2HTTPEvent apiGatewayV2HTTPEvent, Context context) {
+        String tableName = TABLE_NAME_PREFIX + parsingAuthenticationToGetGroups(apiGatewayV2HTTPEvent);
         validateTableExists(tableName, context);
         return tableName;
+    }
+
+    private String parsingAuthenticationToGetGroups(APIGatewayV2HTTPEvent apiGatewayRequest) {
+        Map<String, String> claims = apiGatewayRequest.getRequestContext().getAuthorizer().getJwt().getClaims();
+        String cognitoGroups = claims.get(KEY_FOR_COGNITO_GROUPS);
+        if (apiGatewayRequest.getStageVariables() != null) {
+            return apiGatewayRequest.getStageVariables().get(KEY_STAGE_VARIABLE);
+        }
+        cognitoGroups = cognitoGroups.replaceAll("[\\[\\]()]", "");
+
+        return cognitoGroups.split(", ")[0];
     }
 
     public APIGatewayV2HTTPResponse deleteMessageById(APIGatewayV2HTTPEvent apiGatewayRequest, Context context) {
         try {
 
 
-            String tableName = getTableName(context);
+            String tableName = getTableName(apiGatewayRequest, context);
             validateTableExists(tableName, context);
 
             DynamoDBMapper mapper = getCachedDynamoDBMapper(tableName);
